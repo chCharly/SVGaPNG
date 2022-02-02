@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+
+<html lang="es">
+
+<head>
+
+  <title>SVGaPNG</title>
+  <link rel="shortcut icon" href="https://cdn.pixabay.com/photo/2012/04/26/14/17/pencil-42595_960_720.png"
+    type="image/x-icon"> <!-- https://pixabay.com/vectors/pencil-eraser-print-draw-logo-42595/ -->
+  <meta name="description"
+    content="Convertidor de SVG a PNG, utilizando Canvas y JavaScript. El proyecto está basado en los proyectos 'SVG to PNG' de C.Y Wong, publicado en https://mybyways.com/blog/convert-svg-to-png-using-your-browser y 'changeDPI' de Andrea Bogazzi ('asturur'), publicado en https://github.com/shutterstock/changeDPI" />
+  <meta name="keywords" content="SVG, PNG, convertir, JavaScript, HTML, Canvas" />
+  <meta name="author" content="Carlos A. Villarreal" />
+  <meta name="copyright"
+    content="This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. \n
+    This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. \n
+    You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>." />
+  <base target="_top" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+
+  <style type="text/css" media="all">
+    body {
+      max-width: 700px;
+      margin: auto;
+      background-color: #1c1c1c;
+    }
+
+    fieldset {
+      display: block;
+      margin: auto;
+      background-color: white;
+      font-family: 'Times New Roman', Times, serif;
+      font-size: 1em;
+    }
+
+    legend {
+      font-family: Georgia, 'Times New Roman', Times, serif;
+      font-weight: 200;
+      font-size: 1.5em;
+    }
+
+    svg {
+      display: block;
+      margin: auto;
+    }
+
+    canvas {
+      display: none;
+    }
+
+    #all {
+      background-color: #e0e0e0;
+    }
+
+    textarea {
+      display: block;
+      margin: auto;
+      outline: none;
+      resize: none;
+      overflow: auto;
+      tab-size: 2;
+      font-family: monospace;
+      font-size: .9em;
+      font-weight: 500;
+      width: 98%;
+      height: 30em;
+    }
+
+    #width,
+    #height,
+    #density {
+      outline: none;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 1em;
+      font-weight: 700;
+      width: 25%;
+      height: 2.5em;
+    }
+
+    #loadButton,
+    #saveButton {
+      display: block;
+      margin: auto;
+      font-family: Verdana, Geneva, Tahoma, sans-serif;
+      font-size: 1.1em;
+      font-weight: 400;
+      width: 98%;
+      height: 5em;
+      background-color: #e0e0e0;
+    }
+  </style>
+
+</head>
+
+<body>
+
+  <div id="all">
+
+    <fieldset>
+      <legend translate="no"> SVG </legend>
+      <label for="codeText"> Código: </label><br />
+      <textarea id="codeText" name="SVG Code" inputmode="text" spellcheck="false" wrap="off"
+        placeholder="Copia y pega, o escribe aquí el código SVG..." autofocus required></textarea><br />
+      <br />
+      <button id="loadButton"> Cargar el SVG </button><br />
+      <br />
+      <div id="svgPreview" translate="no"></div><br />
+    </fieldset>
+
+    <fieldset>
+      <legend translate="no"> PNG </legend>
+      <label for="png width"> Tamaño: </label><br />
+      <input id="width" name="png width" inputmode="numeric" type="number" max="12000" placeholder="Anchura" required> x
+      <input id="height" name="png height" inputmode="numeric" type="number" max="12000" placeholder="Altura" required>
+      píxeles.<br />
+      <input id="ratioLock" type="checkbox">
+      <label for="ratioLock">Fijar la relación de aspecto.</label><br />
+      <br />
+      <label for="png density"> Densidad: </label><br />
+      <input id="density" name="png density" inputmode="numeric" type="number" max="1200" placeholder="DPI" required>
+      píxeles por pulgada.<br />
+      <br />
+      <br />
+      <button id="saveButton"> Descargar el PNG </button><br />
+      <br />
+      <canvas id="canvas"></canvas><br />
+    </fieldset>
+
+  </div>
+
+  <script type="text/javascript">
+
+    const
+      customFileName = "SVGaPNG_IMG",
+      browser = window.URL || window.webkitURL || window,
+      text = document.getElementById('codeText'),
+      widthInput = document.getElementById('width'),
+      heightInput = document.getElementById('height'),
+      ratioLock = document.getElementById('ratioLock'),
+      densityInput = document.getElementById('density'),
+      svgPreview = document.getElementById('svgPreview'),
+      canvas = document.getElementById('canvas'),
+      b64PhysSignature1 = 'AAlwSFlz',
+      b64PhysSignature2 = 'AAAJcEhZ',
+      b64PhysSignature3 = 'AAAACXBI',
+      _P = 'p'.charCodeAt(0),
+      _H = 'H'.charCodeAt(0),
+      _Y = 'Y'.charCodeAt(0),
+      _S = 's'.charCodeAt(0);
+
+    let
+      svg,
+      pngDataTable = void 0,
+      lastWidthValue = +widthInput.value,
+      lastHeightValue = +heightInput.value;
+    console.log(lastHeightValue, lastWidthValue)
+
+    document.getElementById('loadButton').onclick = () => {
+      svgPreview.innerHTML = text.value;
+      svg = svgPreview.querySelector('svg');
+      if (svg) {
+        widthInput.value = +svg.getBoundingClientRect().width;
+        heightInput.value = +svg.getBoundingClientRect().height;
+        svg.style.width = '350px';
+        svg.style.height = '350px';
+//        ratioLock.checked = true;  // Por alguna razón el onchange de los inputs w&h no funciona la primera vez...
+        let
+          lastWidthValue = +widthInput.value,
+          lastHeightValue = +heightInput.value;
+        console.log(lastHeightValue, lastWidthValue)
+        console.info(new Date().toLocaleString() + " - SVG cargado con éxito...");
+      } else {
+        console.error(new Date().toLocaleString() + " - Falló la carga del SVG...");
+        window.alert("¡Primero pega o escribe un código SVG válido!");
+      }
+    };
+
+    document.getElementById('saveButton').onclick = () => {
+      if (svg) {
+        canvas.width = widthInput.value;
+        canvas.height = heightInput.value;
+        svg.setAttribute('width', widthInput.value);
+        svg.setAttribute('height', heightInput.value);
+        const
+          svgData = new XMLSerializer().serializeToString(svg),
+          svgBlob = new Blob([svgData], { type: 'image/svg+xml' }),
+          blobURL = browser.createObjectURL(svgBlob),
+          a = document.createElement('a'),
+          image = new Image();
+        image.src = blobURL;
+        image.onload = () => {
+          browser.revokeObjectURL(blobURL);
+          canvas.getContext('2d').drawImage(image, 0, 0);
+          let
+            dataURL = canvas.toDataURL('data:image/png;base64');
+          if (densityInput.value !== "" && densityInput.value > 0) {
+            dataURL = changeDpiDataUrl(dataURL, densityInput.value)
+          } else {
+            console.info(new Date().toLocaleString() + " - No se agregó información sobre el tamaño de los píxeles al PNG...")
+          }
+          document.body.appendChild(a);
+          a.style.display = 'none';
+          a.href = dataURL;
+          a.download = (svg.getAttribute('name') || svg.id || svg.getAttribute('aria-label') || customFileName) + '.png';
+          a.click();
+          browser.revokeObjectURL(dataURL);
+          document.body.removeChild(a);
+          console.info(new Date().toLocaleString() + " - Se inició correctamentela descarga del PNG.")
+        };
+      } else {
+        console.error(new Date().toLocaleString() + " - Falló la descarga del PNG...");
+        window.alert("¡Primero carga el SVG!");
+      }
+    };
+
+    widthInput.onchange = () => {
+      if (ratioLock.checked) {
+        if (lastWidthValue === 0) {
+          lastWidthValue = +widthInput.value;
+          lastHeightValue = +heightInput.value;
+        }
+        let
+          ratio = +widthInput.value / lastWidthValue;
+        heightInput.value = +(ratio * +heightInput.value);
+        lastWidthValue = +widthInput.value;
+        lastHeightValue = +heightInput.value;
+        console.log(lastHeightValue, lastWidthValue)
+      }
+    };
+
+    heightInput.onchange = () => {
+      if (ratioLock.checked) {
+        if (lastHeightValue === 0) {
+          lastHeightValue = +heightInput.value;
+          lastWidthValue = +widthInput.value;
+        }
+        let
+          ratio = +heightInput.value / lastHeightValue;
+        widthInput.value = +(ratio * +widthInput.value);
+        lastHeightValue = +heightInput.value;
+        lastWidthValue = +widthInput.value;
+        console.log(lastHeightValue, lastWidthValue)
+      }
+    };
+
+    ratioLock.onchange = () => {
+      lastWidthValue = +widthInput.value;
+      lastHeightValue = +heightInput.value;
+      console.log(lastHeightValue, lastWidthValue)
+    };
+
+    changeDpiDataUrl = (base64Image, dpi) => {
+      const
+        dataSplitted = base64Image.split(','),
+        format = dataSplitted[0],
+        body = dataSplitted[1],
+        type = "image/png",
+        b64Index = detectPhysChunkFromDataUrl(body);
+      let
+        headerLength = void 0,
+        overwritepHYs = false;
+      if (b64Index >= 0) {
+        headerLength = Math.ceil((b64Index + 28) / 3) * 4;
+        overwritepHYs = true;
+      } else {
+        headerLength = 33 / 3 * 4;
+      }
+      const
+        stringHeader = body.substring(0, headerLength),
+        restOfData = body.substring(headerLength),
+        headerBytes = atob(stringHeader);
+      let
+        dataArray = new Uint8Array(headerBytes.length);
+      for (let i = 0; i < dataArray.length; i++) {
+        dataArray[i] = headerBytes.charCodeAt(i);
+      }
+      const
+        finalArray = changeDpiOnArray(dataArray, dpi, type, overwritepHYs),
+        base64Header = btoa(String.fromCharCode.apply(String, _toConsumableArray(finalArray)));
+      console.info(new Date().toLocaleString() + " - DPI agregado con éxito...");
+      return [format, ',', base64Header, restOfData].join('');
+    };
+
+    detectPhysChunkFromDataUrl = (data) => {
+      let b64index = data.indexOf(b64PhysSignature1);
+      if (b64index === -1) {
+        b64index = data.indexOf(b64PhysSignature2);
+      }
+      if (b64index === -1) {
+        b64index = data.indexOf(b64PhysSignature3);
+      }
+      return b64index;
+    };
+
+    changeDpiOnArray = (dataArray, dpi, format, overwritepHYs) => {
+      const
+        physChunk = new Uint8Array(13),
+        crc = calcCrc(physChunk),
+        crcChunk = new Uint8Array(4);
+      dpi *= 39.37007874015748;
+      physChunk[0] = _P;
+      physChunk[1] = _H;
+      physChunk[2] = _Y;
+      physChunk[3] = _S;
+      physChunk[4] = dpi >>> 24; // dpiX highest byte
+      physChunk[5] = dpi >>> 16; // dpiX veryhigh byte
+      physChunk[6] = dpi >>> 8; // dpiX high byte
+      physChunk[7] = dpi & 0xff; // dpiX low byte
+      physChunk[8] = physChunk[4]; // dpiY highest byte
+      physChunk[9] = physChunk[5]; // dpiY veryhigh byte
+      physChunk[10] = physChunk[6]; // dpiY high byte
+      physChunk[11] = physChunk[7]; // dpiY low byte
+      physChunk[12] = 1; // dot per meter....     
+      crcChunk[0] = crc >>> 24;
+      crcChunk[1] = crc >>> 16;
+      crcChunk[2] = crc >>> 8;
+      crcChunk[3] = crc & 0xff;
+      if (overwritepHYs) {
+        const
+          startingIndex = searchStartOfPhys(dataArray);
+        dataArray.set(physChunk, startingIndex);
+        dataArray.set(crcChunk, startingIndex + 13);
+        return dataArray;
+      } else {
+        const
+          chunkLength = new Uint8Array(4),
+          finalHeader = new Uint8Array(54);
+        chunkLength[0] = 0;
+        chunkLength[1] = 0;
+        chunkLength[2] = 0;
+        chunkLength[3] = 9;
+        finalHeader.set(dataArray, 0);
+        finalHeader.set(chunkLength, 33);
+        finalHeader.set(physChunk, 37);
+        finalHeader.set(crcChunk, 50);
+        return finalHeader;
+      }
+    };
+
+    calcCrc = (buf) => {
+      console.trace("creando pngDataTable...");
+      let
+        c = -1;
+      if (!pngDataTable) {
+        pngDataTable = createPngDataTable();
+        for (let i = 0; i < buf.length; i++) {
+          c = pngDataTable[(c ^ buf[i]) & 0xFF] ^ c >>> 8;
+        }
+        return c ^ -1;
+      }
+    };
+
+    createPngDataTable = () => {
+      let
+        crcTable = new Int32Array(256);
+      for (let i = 0; i < 256; i++) {
+        let c = i;
+        for (let k = 0; k < 8; k++) {
+          c = c & 1 ? 0xedb88320 ^ c >>> 1 : c >>> 1;
+        }
+        crcTable[i] = c;
+      }
+      return crcTable;
+    };
+
+    searchStartOfPhys = (data) => {
+      console.trace("sobreescribiendo el 'pHYs chunk'...");
+      const
+        length = data.length - 1;
+      for (let i = length; i >= 4; i--) {
+        if (
+          data[i - 4] === 9 &&
+          data[i - 3] === _P &&
+          data[i - 2] === _H &&
+          data[i - 1] === _Y &&
+          data[i] === _S) {
+          return i - 3;
+        }
+      }
+    };
+
+    _toConsumableArray = (arr) => {
+      if (Array.isArray(arr)) {
+        for (let i = 0, arr2 = Array(arr.length); i < arr.length; i++) {
+          arr2[i] = arr[i];
+        }
+        return arr2;
+      } else {
+        return Array.from(arr);
+      }
+    };
+
+  </script>
+
+  <noscript> ¡Tu explorador no soporta JavaScript actualmente! </noscript>
+
+</body>
+
+</html>
